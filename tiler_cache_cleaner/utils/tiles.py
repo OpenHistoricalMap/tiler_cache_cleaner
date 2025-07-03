@@ -106,7 +106,7 @@ def generate_tile_patterns_bbox(minx, miny, maxx, maxy, zoom_levels):
 
 
 def get_and_delete_existing_tiles(
-    bucket_name, path_file, tiles_patterns, batch_size=1000, color="\033[0m"
+    bucket_name, path_file, tiles_patterns,  tiles_file_name="", batch_size=1000,
 ):
     """
     Efficiently check which tile objects exist in S3 and delete them immediately to prevent accumulation.
@@ -150,8 +150,8 @@ def get_and_delete_existing_tiles(
                             Bucket=bucket_name, Delete={"Objects": objects_to_delete}
                         )
                         total_deleted += len(objects_to_delete)
-                        print(
-                            f"{color}[{processed_patterns + 1}/{total_patterns}] Deleted {len(objects_to_delete)} tiles under {prefix}*{color}"
+                        logger.info(
+                            f"{tiles_file_name}->[{processed_patterns + 1}/{total_patterns}] Deleted {len(objects_to_delete)} tiles under {prefix}*"
                         )
                         objects_to_delete = []
 
@@ -161,7 +161,7 @@ def get_and_delete_existing_tiles(
 
             processed_patterns += 1
             logger.info(
-                f"{color}[{processed_patterns}/{total_patterns}] Deleted {found_this_prefix} objects under prefix {prefix}{color}"
+                f"{tiles_file_name}->[{processed_patterns}/{total_patterns}] Deleted {found_this_prefix} objects under prefix {prefix}"
             )
 
     except ClientError as e:
@@ -172,65 +172,9 @@ def get_and_delete_existing_tiles(
         raise
 
     elapsed_time = time.time() - start_time
-    print(f"{color}S3 cleanup completed in {elapsed_time:.2f} seconds{color}")
-    print(f"{color}Total tiles found: {total_found}{color}")
-    print(f"{color}Total deleted tiles: {total_deleted}{color}")
+    logger.info(f"S3 cleanup completed in {elapsed_time:.2f} seconds")
+    logger.info(f"Total tiles found: {total_found}")
+    logger.info(f"Total deleted tiles: {total_deleted}")
 
     return total_deleted
 
-
-def delete_folders_by_pattern(bucket_name, patterns, path_file, batch_size=1000):
-    """
-    Delete folders in the S3 bucket matching the pattern:
-    s3://<bucket>/mnt/data/osm/<zoom>/<prefix>***, using bulk delete.
-
-    Args:
-        bucket_name (str): The name of the S3 bucket.
-        patterns (list): A list of patterns in the format '<zoom>/<prefix>...'.
-        path_file (str): The base path in S3 where objects are stored.
-        batch_size (int): Number of objects to delete per request (default 1000).
-
-    Returns:
-        None
-    """
-    s3_client = Config.get_s3_client()
-
-    try:
-        for pattern in patterns:
-            zoom, prefix = pattern.split("/")
-            folder_prefix = f"{path_file}/{zoom}/{prefix}"
-            logger.info(f"Fetching objects under prefix: {folder_prefix}...")
-
-            paginator = s3_client.get_paginator("list_objects_v2")
-            response_iterator = paginator.paginate(Bucket=bucket_name, Prefix=folder_prefix)
-
-            objects_to_delete = []
-            for page in response_iterator:
-                for obj in page.get("Contents", []):
-                    obj_key = obj["Key"]
-                    logger.info(f"Marked for deletion: {bucket_name}/{obj_key}")
-                    objects_to_delete.append({"Key": obj_key})
-
-                    # Delete in batches of `batch_size`
-                    if len(objects_to_delete) >= batch_size:
-                        logger.info(
-                            f"INFRASTRUTURE {Config.CLOUD_INFRASTRUCTURE},  REGION: {Config.AWS_REGION_NAME} , BUCKER Deleting {len(objects_to_delete)} objects under the patern: {patterns}"
-                        )
-                        s3_client.delete_objects(
-                            Bucket=bucket_name, Delete={"Objects": objects_to_delete}
-                        )
-                        objects_to_delete = []
-
-            # Delete remaining objects if any
-            if objects_to_delete:
-                logger.info(
-                    f"Deleting final {len(objects_to_delete)} objects under the patern: {patterns}...in bucket and region: {bucket_name} {Config.AWS_REGION_NAME}"
-                )
-                s3_client.delete_objects(Bucket=bucket_name, Delete={"Objects": objects_to_delete})
-
-        logger.info("Bulk deletion completed for all matching patterns.")
-
-    except Exception as e:
-        print(f"Error during bulk deletion: {e}")
-        logger.error(f"Error during bulk deletion: {e}")
-        raise

@@ -20,3 +20,13 @@ This new Python module improves upon the original by offering:
 
 
 While this module was initially considered to be directly attached to Tegola, our current workflows in OpenHistoricalMap rely on AWS SQS for managing cache invalidation. To avoid coupling to a specific tile generator and allow more flexibility, we opted to keep this tool as an independent module.
+
+# CLI
+
+
+```
+python -m tiler_cache_cleaner clean_file \
+--expired-file-url="https://s3.us-east-1.amazonaws.com/planet-staging.openhistoricalmap.org/imposm/imposm3_expire_dir/20241210/114154.074.tiles" \
+--path-file "/mnt/data/osm" \
+--zoom-levels "1,2,3,4,5"
+```
