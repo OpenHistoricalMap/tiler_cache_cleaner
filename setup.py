@@ -5,7 +5,7 @@ setup(
     version="0.1",
     author="Rub21",
     author_email="rub2106@gmail.com",
-    description="Efficient S3 tile cache cleaner",
+    description="Remove S3 tile cache in batch, easily and specifically for expired files and bbox areas.",
     packages=find_packages(),
     install_requires=["boto3", "botocore", "mercantile", "typer[all]"],
     entry_points={
@@ -13,5 +13,5 @@ setup(
             "tiler-cache-cleaner=tiler_cache_cleaner.cli:app",
         ],
     },
-    python_requires='>=3.7',
+    python_requires=">=3.7",
 )

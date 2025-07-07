@@ -28,9 +28,8 @@ def get_list_expired_tiles(url):
             logger.warning("The file is empty. No expired tiles found.")
             return []
 
-        # Ensure uniqueness
         unique_tiles = list(set(file_content.splitlines()))
-        unique_tiles.sort()  # Optional: to make output deterministic
+        unique_tiles.sort()
         logger.info(f"Number of unique expired tiles: {len(unique_tiles)}")
 
         # Split into chunks of 1000

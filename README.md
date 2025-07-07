@@ -23,10 +23,33 @@ While this module was initially considered to be directly attached to Tegola, ou
 
 # CLI
 
+- Remove all tiles under a given prefix for specific zoom levels e.g
+
+```sh
+tiler-cache-cleaner clean_by_prefix \
+    --prefix-path-file="mnt/data/osm" \
+    --zoom-levels="0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20"
 
 ```
-python -m tiler_cache_cleaner clean_file \
---expired-file-url="https://s3.us-east-1.amazonaws.com/planet-staging.openhistoricalmap.org/imposm/imposm3_expire_dir/20241210/114154.074.tiles" \
---path-file "/mnt/data/osm" \
---zoom-levels "1,2,3,4,5"
+
+- Remove tiles listed in an Imposm expired file (format: z/x/y) for a specific prefix and zoom levels. e.g
+
+```sh
+tiler-cache-cleaner clean_by_file \
+    --expired-file-url="https://s3.us-east-1.amazonaws.com/planet-staging.openhistoricalmap.org/imposm/imposm3_expire_dir/20241210/114154.074.tiles" \
+    --prefix-path-file="mnt/data/osm" \
+    --zoom-levels="1,2,3,4,5"
 ```
+
+
+- Remove all tiles within a bounding box for a specific prefix and zoom levels. e.g
+
+```sh
+tiler-cache-cleaner clean_by_bbox \
+    --prefix-path-file="mnt/data/osm" \
+    --zoom-levels="11,12,13,14,15,16" \
+    --bbox="-74.259875,-13.200409,-74.190009,-13.119005"
+```
+
+
+<!-- python -m tiler_cache_cleaner clean_by_bbox -->

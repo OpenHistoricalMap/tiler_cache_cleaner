@@ -1,10 +1,6 @@
-import boto3
 import re
-from tiler_cache_cleaner.utils.config import Config
 from tiler_cache_cleaner.utils.logger import get_logger
-from botocore.exceptions import ClientError
 import mercantile
-import time
 
 logger = get_logger()
 
@@ -12,16 +8,16 @@ logger = get_logger()
 def generate_patterns_tiles(tiles, zoom_levels):
     """
     Generate zoom/x_prefix patterns from input tiles for the specified zoom levels.
-    
+
     Includes:
     - The current tile's zoom (if in zoom_levels)
     - Parent tiles (if their zoom is in zoom_levels)
     - Child tiles down to the max zoom in zoom_levels
-    
+
     Args:
         tiles (list): List of tile strings in "z/x/y" format.
         zoom_levels (list or int): Target zoom levels for pattern generation.
-    
+
     Returns:
         list: Sorted list of unique zoom/x prefix strings.
     """
@@ -33,6 +29,7 @@ def generate_patterns_tiles(tiles, zoom_levels):
 
     zoom_levels = sorted(set(zoom_levels))
     patterns = set()
+
     def add_pattern(z, x):
         if z not in zoom_levels:
             return
@@ -75,106 +72,30 @@ def generate_patterns_tiles(tiles, zoom_levels):
     return sorted_patterns
 
 
-def generate_tile_patterns_bbox(minx, miny, maxx, maxy, zoom_levels):
+def generate_tile_patterns_bbox(bbox, zoom):
     """
     Generate minimal set of unique tile prefixes z/x_prefix based on tile.x only.
-    Avoids iterating over full tile list (x/y) to save time.
+    Optimized to avoid iterating over full tile list (x/y).
     """
     prefixes = set()
+    minx, miny, maxx, maxy = bbox
+    tile_ul = mercantile.tile(minx, maxy, zoom)  # upper-left corner
+    tile_lr = mercantile.tile(maxx, miny, zoom)  # lower-right corner
 
-    for z in zoom_levels:
-        # Only store unique x prefixes at this zoom level
-        x_prefix_set = set()
-        tiles = mercantile.tiles(minx, miny, maxx, maxy, [z])
+    min_x, max_x = tile_ul.x, tile_lr.x
 
-        for tile in tiles:
-            x_str = str(tile.x)
-            if len(x_str) <= 2:
-                x_prefix = x_str
-            elif len(x_str) == 3:
-                x_prefix = x_str[:-1]
-            else:
-                x_prefix = x_str[:-2]
+    logger.info(f"Zoom {zoom}: X range {min_x} to {max_x}")
 
-            x_prefix_set.add(f"{z}/{x_prefix}")
+    for x in range(min_x, max_x + 1):
+        x_str = str(x)
+        if len(x_str) <= 2:
+            x_prefix = x_str
+        elif len(x_str) == 3:
+            x_prefix = x_str[:-1]
+        else:
+            x_prefix = x_str[:-2]
 
-        prefixes.update(x_prefix_set)
-        logger.info(f"Zoom {z}: {len(x_prefix_set)} unique x_prefixes")
+        prefixes.add(f"{zoom}/{x_prefix}")
 
     logger.info(f"Total unique prefixes: {len(prefixes)}")
     return sorted(prefixes)
-
-
-def get_and_delete_existing_tiles(
-    bucket_name, path_file, tiles_patterns,  tiles_file_name="", batch_size=1000,
-):
-    """
-    Efficiently check which tile objects exist in S3 and delete them immediately to prevent accumulation.
-    """
-    s3_client = Config.get_s3_client()
-    total_deleted = 0
-    total_found = 0
-    tile_prefixes = set()
-    # Prepare tile prefixes
-    for tile in tiles_patterns:
-        match = re.match(r"(\d+)/(\d+)", tile)
-        if match:
-            zoom, x_prefix = match.groups()
-            prefix = f"{path_file}/{zoom}/{x_prefix}"
-            tile_prefixes.add(prefix)
-
-    start_time = time.time()
-    total_patterns = len(tile_prefixes)
-    processed_patterns = 0
-
-    try:
-        for prefix in tile_prefixes:
-
-            paginator = s3_client.get_paginator("list_objects_v2")
-            response_iterator = paginator.paginate(Bucket=bucket_name, Prefix=prefix)
-
-            objects_to_delete = []
-            found_this_prefix = 0
-
-            for page in response_iterator:
-                contents = page.get("Contents", [])
-                total_found += len(contents)
-                found_this_prefix += len(contents)
-
-                for obj in contents:
-                    obj_key = obj["Key"]
-                    objects_to_delete.append({"Key": obj_key})
-
-                    if len(objects_to_delete) >= batch_size:
-                        s3_client.delete_objects(
-                            Bucket=bucket_name, Delete={"Objects": objects_to_delete}
-                        )
-                        total_deleted += len(objects_to_delete)
-                        logger.info(
-                            f"{tiles_file_name}->[{processed_patterns + 1}/{total_patterns}] Deleted {len(objects_to_delete)} tiles under {prefix}*"
-                        )
-                        objects_to_delete = []
-
-            if objects_to_delete:
-                s3_client.delete_objects(Bucket=bucket_name, Delete={"Objects": objects_to_delete})
-                total_deleted += len(objects_to_delete)
-
-            processed_patterns += 1
-            logger.info(
-                f"{tiles_file_name}->[{processed_patterns}/{total_patterns}] Deleted {found_this_prefix} objects under prefix {prefix}"
-            )
-
-    except ClientError as e:
-        logger.error(f"S3 ClientError while fetching or deleting tiles: {e}")
-        raise
-    except Exception as e:
-        logger.error(f"Error while fetching or deleting tiles from S3: {e}")
-        raise
-
-    elapsed_time = time.time() - start_time
-    logger.info(f"S3 cleanup completed in {elapsed_time:.2f} seconds")
-    logger.info(f"Total tiles found: {total_found}")
-    logger.info(f"Total deleted tiles: {total_deleted}")
-
-    return total_deleted
-
